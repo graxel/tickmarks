@@ -1,0 +1,204 @@
+Don't TICK Off Your Readers
+
+It has always been a pet peeve of mine to see graphs like the one pictured on the left featured on [@BLOOMBERG].
+
+[HORRIBLE GRAPH PICTURE] [DOCTORED GRAPH PICTURE]
+
+Y-axis labels every 1120 units? X-axis lines denoting 2008, 2011, 2014, and 2017 with the labels at 2010, 2013, and 2016? Wouldn't this graph be much more intelligible, and therefore *much more useful* if it were labeled like the one on the right?
+
+Tickmarks matter. Their proper use can make or break the readibility and utility of data visualization. The primary objective of visualization is to take a set of hard-to-interpret numerical data and present it in an intuitive way in which the viewer can quickly and easily understand where the data lie and how they relate to each other.
+
+From this					to this
+[PICTURE OF TABLE OF DATA] [PICTURE OF EASY-TO-INTERPRET GRAPH]
+
+Tickmarks readily convey the the scale and vicinity in which plotted data reside. They provide a reference against which to compare features in the plot. Seeing the importance of tickmarks and getting their positioning right, I set out to develop a simple algorithm to eliminate guesswork and turn this into a concrete process.
+
+After some research and experimentation with aesthetics, keeping the number of ticks between five and ten seems to produce the most pleasing and informative plots. Exceptions to this rule do exist, for instance, consider latitude and longitude rulings when plotting GIS data.
+
+Now that we have an aesthetically pleasing range for the number of ticks, we can think about tick spacing. For tick spacing when plotting data of any numerical magnitude, I usually prefer the [1, 2, 5] preferred number sequence. This means picking one of these numbers and using multiples of it as the significand of each tick value. If you've never heard of preferred numbers, and you're keen on knowing more about them, take a few minutes to skim through [wikipedia.org/wiki/Preferred_number](https://en.wikipedia.org/wiki/Preferred_number). 
+
+For example, consider the following dataset:
+'''x = [30, 34, 38, 45, 52, 65]
+y = [2.4, 2.2, 3.3, 3.7, 2.9, 3.2]'''
+
+For the x-axis, 5 would be a good spacing between ticks, giving us tickmarks at
+'''[30, 35, 40, 45, 50, 55, 60, 65]'''.
+
+For the y-axis, a spacing of 0.2 between each tick works. The number 0.2 is still one of my preferred numbers, just multiplied by 10^-1; *2* x 10^-1 = 0.2. The y-axis tickmarks end up at
+'''[2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8]'''.
+
+Back to maps and GIS data for a moment. Imagine you have longitude data for points around the world, ranging from -180 degrees to +180 degrees. You initial approach might be to keep the [1, 2, 5] preferred number sequence, but using this you might end up with longitude rulings every 50 degrees,
+'''[-150, -100, -50, 0, 50, 100, 150]'''
+or even worse, 
+'''[-200, -150, -100, -50, 0, 50, 100, 150, 200]'''.
+
+In this case, it is preferable to use [1, 1.5, 2, 3, 4.5, 6, 9] as your series of preferred numbers. This way, 4.5 is selected and the longitude is split up nicely in multiples of 45 degrees:
+'''[-180, -135, -90, -45, 0, 45, 90, 135, 180]'''.
+
+Hopefully this helps illustrate the use and importance of preferred numbers.
+
+So how do we go about selecting the best spacing for the tickmarks?
+
+I wrote a few functions in python to help with this. If you'd like to follow along as you read, the full code for this project is on [my Github page](http://www.github.com/grazel98). The main workflow is as follows:
+
+1. Calculate min, max, range, and min/max step size
+2. Decompose min/max step size into significand and exponent
+3. Order significand within preferred numbers list
+4. Calculate number of steps for each preferred number, take the best
+5. Build tickmark list
+6. Cleanup with sigfigs
+
+### Calculate Min, Max, Range, and Min/Max Step Size:
+`data_high = max(data_points)
+data_low = min(data_points)
+data_range = data_high - data_low`
+
+If the user gives optional padding values (defaults are 0.0):
+`padded_low = data_low - (data_range*low_padding)
+padded_high = data_high + (data_range*high_padding)
+padded_range = padded_high - padded_low`
+
+The user specifies a positive steps constraint to indicate the minimum number of tickmarks they would like, or a negative steps constraint to indicate the maximum number of tickmarks (default is +5). We use this tickmark constraint along with the padded range to determine the maximum (or minimum) step size:
+`step_size_at_constraint = padded_range/abs(steps_constraint)`
+
+Using y from the example dataset above, we have
+`padded_low : 2.2
+padded_high : 3.7
+padded_range : 1.5`
+**`step_size_at_constraint : 0.3`**
+
+### Decompose Min/Max Step Size into Significand and Exponent
+
+In order to determine which tick values to use, we need to decompose the maximum step size into its significand and exponent. This is the process used to display numbers in scientific notation. For this task, I wrote a small function of just a few lines. The code following the else statement is where most of the action takes place:
+
+`def decomp(number):
+    '''
+    decomp(number)
+
+    decomp() breaks a number up into its significand and base-10 exponent, as it would be displayed in scientific notation.
+
+    ex. decomp(1024) => 1.024, 3
+    '''
+
+    if number == 0:
+        significand = 0
+        exponent = 0
+
+    else:
+    	# take log of number
+        logarithm = math.log10(abs(number))
+        
+        # split log into fraction and integer parts
+        mantissa, exponent = math.modf(logarithm)
+        
+        if logarithm < 0:	# if log is negative,
+            mantissa += 1	# adjust mantissa to be positive, and
+            exponent -= 1	# adjust exponent to account for adjusted mantissa
+
+        # calculate significand from mantissa
+        significand = math.copysign(math.pow(10, mantissa), number)
+
+    return significand, int(exponent)`
+
+Now to put the function to use:
+`con_step_size_sig, step_size_exp = decomp(step_size_at_constraint)`
+
+For our example dataset y,
+**`con_step_size_sig : 3.0`**
+`step_size_exp : -1`
+
+### Order Significand within Preferred Numbers List
+This piece of code compares the significand of the maximum step size to the preferred numbers list. Any preferred numbers that are greater than the significand of the maximum step size get divided by ten. These numbers are stored in a list of possible step sizes, which is gets sorted at the end in preparation of the next step. In this case, 5 is greater than 3.0, so it gets divided by 10 and becomes 0.5.
+
+`poss_step_sizes = []
+if steps_constraint > 0:
+    # See where the significand of the max step size falls in the preferred numbers list
+    # being the MAX step size, take any preferred numbers that are greater and divide them by ten
+    for preferred_number in preferred_number_series:
+        if math.isclose(preferred_number, con_step_size_sig, rel_tol=1e-08, abs_tol=0.0): # test for equality
+            poss_step_sizes.append(preferred_number)
+        elif preferred_number < con_step_size_sig: # test if preferred number is less
+            poss_step_sizes.append(preferred_number)
+        else:
+            poss_step_sizes.append(preferred_number/10) # otherwise adjust so that it IS less
+    poss_step_sizes.sort(reverse=False) # sort for the following poss_step_sizes loop`
+
+`poss_step_sizes : [0.5, 1.0, 2.0]`
+
+### Select the Best Preferred Number
+Now let's try these possible step sizes on for size, without forgetting about the exponent! Using a step size of 0.5 x 10^-1 gives us 30 steps, 1.0 x 10^-1 gives us 15 steps, 2.0 x 10^-1 gives us 8 steps; 8 steps is closest to our constraint of 5 or more steps, so we choose this step size.
+
+`# see how many steps each possible step size would give
+        best_steps_so_far = float('Inf')
+        for poss_step_size_sig in poss_step_sizes:
+            step_size = poss_step_size_sig * 10**step_size_exp
+            num_steps = int(padded_range / step_size)
+            if (num_steps >= abs(steps_constraint)) & (num_steps < best_steps_so_far):
+                best_steps_so_far = num_steps
+                best_step_size_so_far = step_size
+#
+# code for step constraint < 0 skipped for clarity and brevity
+#
+    num_steps = best_steps_so_far
+    step_size = best_step_size_so_far`
+
+So,
+`num_steps : 8
+step_size : 0.2`
+
+### Build tickmark list
+
+Now that we have our step size, we first need to find a nice round number as our base tick value. This is accomplished by dividing the range by the step size, truncating the fraction part, and multiplying back by the step size. With a base tick value, we simply loop through the process of incrrementing by the step size and appending to our tick list.
+
+`# building tick list
+mult = 0
+ticklist = []
+	
+if ticks_at_edge == True:
+    bottom_tick = math.floor(padded_low/step_size)*step_size
+    top_tick = math.ceil(padded_high/step_size)*step_size
+else:
+    bottom_tick = math.ceil(padded_low/step_size)*step_size
+    top_tick = math.floor(padded_high/step_size)*step_size
+
+# Use sigfigs function to avoid the perils of floating point operations!
+while sigfigs(bottom_tick + mult*step_size) < sigfigs(top_tick):
+    ticklist.append(sigfigs(bottom_tick + mult*step_size))
+    mult += 1
+ticklist.append(sigfigs(top_tick))
+
+return ticklist`
+
+
+### Cleanup with sigfigs
+ Finally, you'll notice a function called sigfigs() in the previous code snippet. This is another small helper function I wrote to avoid the problems that come with floating point operations. Without applying the sigfigs function, some tickmark values end up a trillionth off, like 2.20000000000001. Sigfigs() cleans these numbers up.
+
+`def sigfigs(number, sig_figs=8):
+    '''
+    sigfigs(number, sig_figs=8)
+    
+    sigfigs() returns a number rounded to a specified number of significant figures. Default 
+    number of significant figures is 8.
+    
+    This can be useful when dealing with the results of floating point operations.
+    
+    ex. sigfigs(0.500000000001) => 0.5
+    '''
+    if number == 0:
+        return 0
+    exponent = math.floor(math.log10(abs(number)))
+    decimal_places = sig_figs - exponent - 1
+    return eval(('{:.'+str(decimal_places)+'f}').format(number))`
+
+The whole tickmarks function ends up looking like this:
+
+`>>> y = [2.4, 2.2, 3.3, 3.7, 2.9, 3.2]
+>>> ticks(y)
+[2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8]`
+
+So there you have it, an algorithm to determine tickmark values for any continuous numerical axis. The full code for this project is on [my Github](github.com). I hope you enjoyed reading, and if you found this article useful, don't forget to send some claps my way.
+
+
+
+
+
