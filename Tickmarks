@@ -196,7 +196,7 @@ The whole tickmarks function ends up looking like this:
 >>> ticks(y)
 [2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6, 3.8]`
 
-So there you have it, an algorithm to determine tickmark values for any continuous numerical axis. The full code for this project is on [my Github](github.com). I hope you enjoyed reading, and if you found this article useful, don't forget to send some claps my way.
+So there you have it, an algorithm to determine tickmark values for any continuous numerical axis. The full code for this project is on [my Github page](http://www.github.com/grazel98). I hope you enjoyed reading, and if you found this article useful, don't forget to send some claps my way.
 
 
 
